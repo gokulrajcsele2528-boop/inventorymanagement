@@ -26,8 +26,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Enable CORS for React frontend
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # Enable CORS for React frontend (supports custom FRONTEND_URL or all origins)
+    frontend_origin = os.getenv('FRONTEND_URL', '*')
+    CORS(app, resources={r"/api/*": {"origins": frontend_origin}})
 
     # Register API blueprint
     app.register_blueprint(api_bp)
@@ -42,6 +43,7 @@ def create_app():
             'endpoints': [
                 '/api/dashboard',
                 '/api/products',
+                '/api/products/<id>',
                 '/api/stock/add',
                 '/api/stock/remove',
                 '/api/history'
@@ -52,9 +54,8 @@ def create_app():
     
     # If PostgreSQL host is reachable, use it directly
     if check_db_connection(db_uri):
-        print(f"[Database] PostgreSQL service connection verified. Using PostgreSQL.")
+        print(f"[Database] Connected to PostgreSQL: {db_uri.split('@')[-1] if '@' in db_uri else db_uri}")
     else:
-        # If local/remote PG is unreachable, fallback to SQLite for zero downtime
         sqlite_path = os.path.join(os.path.dirname(__file__), 'inventory.db')
         if not os.getenv('FORCE_POSTGRES'):
             print(f"[Database Notice] PostgreSQL host was unreachable. Using local SQLite: sqlite:///{sqlite_path}")
@@ -66,7 +67,7 @@ def create_app():
     with app.app_context():
         try:
             db.create_all()
-            seed_initial_data()
+            print("[Database] Verified tables 'products' and 'inventory_history'. Ready for real data.")
         except Exception as e:
             print(f"[Database Warning during initialization]: {e}")
             sqlite_path = os.path.join(os.path.dirname(__file__), 'inventory.db')
@@ -74,78 +75,12 @@ def create_app():
             app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{sqlite_path}'
             db.init_app(app)
             db.create_all()
-            seed_initial_data()
 
     return app
-
-def seed_initial_data():
-    if Product.query.count() == 0:
-        sample_products = [
-            {
-                'product_name': 'MacBook Pro 16"',
-                'product_id': 'TECH-001',
-                'category': 'Electronics',
-                'price': 2499.99,
-                'quantity': 12,
-                'minimum_stock': 5
-            },
-            {
-                'product_name': 'Logitech MX Master 3S',
-                'product_id': 'TECH-002',
-                'category': 'Accessories',
-                'price': 99.99,
-                'quantity': 28,
-                'minimum_stock': 10
-            },
-            {
-                'product_name': 'Dell UltraSharp 27" 4K',
-                'product_id': 'TECH-003',
-                'category': 'Monitors',
-                'price': 599.50,
-                'quantity': 4,
-                'minimum_stock': 6
-            },
-            {
-                'product_name': 'Keychron Q1 Pro Keyboard',
-                'product_id': 'TECH-004',
-                'category': 'Accessories',
-                'price': 199.00,
-                'quantity': 0,
-                'minimum_stock': 5
-            },
-            {
-                'product_name': 'Sony WH-1000XM5 Headphones',
-                'product_id': 'TECH-005',
-                'category': 'Audio',
-                'price': 399.99,
-                'quantity': 15,
-                'minimum_stock': 5
-            },
-            {
-                'product_name': 'Anker 100W USB-C Fast Charger',
-                'product_id': 'TECH-006',
-                'category': 'Cables & Power',
-                'price': 49.99,
-                'quantity': 42,
-                'minimum_stock': 15
-            }
-        ]
-
-        for p_data in sample_products:
-            p = Product(**p_data)
-            db.session.add(p)
-            history = InventoryHistory(
-                product_id=p.product_id,
-                action='Product Added',
-                quantity=p.quantity
-            )
-            db.session.add(history)
-
-        db.session.commit()
-        print("[Database] Initial products and audit history populated.")
 
 app = create_app()
 
 if __name__ == '__main__':
-    print("Starting Flask Backend on http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.getenv('PORT', 5000))
+    print(f"Starting Flask Backend on http://localhost:{port}")
+    app.run(host='0.0.0.0', port=port, debug=False)

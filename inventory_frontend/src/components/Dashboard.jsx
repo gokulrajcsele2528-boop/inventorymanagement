@@ -9,7 +9,8 @@ import {
   History, 
   RefreshCw,
   TrendingUp,
-  ArrowRight
+  ArrowRight,
+  DollarSign
 } from 'lucide-react';
 import { inventoryAPI } from '../api';
 
@@ -17,6 +18,7 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
   const [dashboardData, setDashboardData] = useState({
     total_products: 0,
     total_stock: 0,
+    inventory_value: 0,
     low_stock: 0,
     out_of_stock: 0,
     recent_activity: [],
@@ -34,7 +36,7 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
-      setError('Unable to load dashboard data. Please make sure the Flask backend server is running.');
+      setError('Database connection error. Unable to load real inventory statistics from database.');
     } finally {
       setLoading(false);
     }
@@ -57,10 +59,10 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>Overview & Metrics</h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Live stock statistics connected to PostgreSQL</p>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Live real-time statistics calculated from PostgreSQL database</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn btn-secondary btn-sm" onClick={fetchDashboard} title="Refresh data">
+          <button className="btn btn-secondary btn-sm" onClick={fetchDashboard} title="Refresh data from database">
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
           </button>
@@ -79,22 +81,24 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
         <div style={{
           background: '#fef2f2',
           border: '1px solid #fecdd3',
-          padding: '1rem',
+          padding: '1.25rem',
           borderRadius: '10px',
           color: '#991b1b',
           marginBottom: '1.5rem',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
         }}>
           <div>
-            <strong>Backend Connection Notice:</strong> {error}
+            <strong>Database Error:</strong> {error}
           </div>
-          <button className="btn btn-sm btn-danger" onClick={fetchDashboard}>Retry</button>
+          <button className="btn btn-sm btn-danger" onClick={fetchDashboard}>Retry Connection</button>
         </div>
       )}
 
-      {/* 4 Summary Cards */}
+      {/* Summary Cards */}
       <div className="dashboard-grid">
         <div className="metric-card">
           <div className="metric-icon-box metric-icon-purple">
@@ -113,6 +117,18 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
           <div className="metric-details">
             <span className="metric-label">Total Stock Quantity</span>
             <span className="metric-value">{loading ? '...' : dashboardData.total_stock}</span>
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-icon-box" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>
+            <DollarSign size={26} />
+          </div>
+          <div className="metric-details">
+            <span className="metric-label">Total Inventory Value</span>
+            <span className="metric-value">
+              {loading ? '...' : `$${(dashboardData.inventory_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            </span>
           </div>
         </div>
 
@@ -157,10 +173,14 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
           </button>
         </div>
 
-        {dashboardData.recent_activity.length === 0 ? (
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-secondary)' }}>
+            Loading live activity from database...
+          </div>
+        ) : dashboardData.recent_activity.length === 0 ? (
           <div className="empty-state">
             <History size={40} className="empty-icon" />
-            <h4>No recent activity</h4>
+            <h4>No recent activity in database</h4>
             <p>Inventory events such as additions, updates, and stock changes will appear here.</p>
           </div>
         ) : (
@@ -190,7 +210,7 @@ export default function Dashboard({ onNavigate, openAddModal, openStockModal }) 
                     </div>
                   </div>
                   <div className="activity-time">
-                    {item.created_at}
+                    {item.created_at || item.createdAt}
                   </div>
                 </div>
               );

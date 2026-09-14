@@ -13,7 +13,9 @@ class Product(db.Model):
     price = db.Column(db.Float, nullable=False, default=0.0)
     quantity = db.Column(db.Integer, nullable=False, default=0)
     minimum_stock = db.Column(db.Integer, nullable=False, default=5)
+    supplier = db.Column(db.String(150), nullable=True, default='')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     @property
     def status(self):
@@ -27,13 +29,19 @@ class Product(db.Model):
         return {
             'id': self.id,
             'product_name': self.product_name,
+            'productName': self.product_name,
             'product_id': self.product_id,
             'category': self.category,
             'price': float(self.price),
             'quantity': self.quantity,
             'minimum_stock': self.minimum_stock,
+            'supplier': self.supplier or '',
             'status': self.status,
-            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else ''
+            'stockStatus': self.status,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else '',
+            'createdAt': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else '',
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else '',
+            'updatedAt': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else ''
         }
 
 class InventoryHistory(db.Model):
@@ -51,5 +59,6 @@ class InventoryHistory(db.Model):
             'product_id': self.product_id,
             'action': self.action,
             'quantity': self.quantity,
-            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else ''
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else '',
+            'createdAt': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else ''
         }

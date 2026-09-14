@@ -7,6 +7,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
     product_name: '',
     product_id: '',
     category: '',
+    supplier: '',
     price: '',
     quantity: '',
     minimum_stock: '5',
@@ -17,10 +18,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
   useEffect(() => {
     if (initialProduct) {
       setFormData({
-        product_name: initialProduct.product_name || '',
-        product_id: initialProduct.product_id || '',
+        product_name: initialProduct.product_name || initialProduct.productName || '',
+        product_id: initialProduct.product_id || initialProduct.sku || '',
         category: initialProduct.category || '',
-        price: initialProduct.price || '',
+        supplier: initialProduct.supplier || '',
+        price: initialProduct.price !== undefined ? initialProduct.price : '',
         quantity: initialProduct.quantity !== undefined ? initialProduct.quantity : '',
         minimum_stock: initialProduct.minimum_stock !== undefined ? initialProduct.minimum_stock : '5',
       });
@@ -29,6 +31,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
         product_name: '',
         product_id: '',
         category: '',
+        supplier: '',
         price: '',
         quantity: '',
         minimum_stock: '5',
@@ -59,6 +62,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
         product_name: formData.product_name.trim(),
         product_id: formData.product_id.trim(),
         category: formData.category.trim(),
+        supplier: formData.supplier.trim(),
         price: parseFloat(formData.price) || 0,
         quantity: parseInt(formData.quantity, 10) || 0,
         minimum_stock: parseInt(formData.minimum_stock, 10) || 5,
@@ -67,16 +71,16 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
       if (initialProduct && initialProduct.id) {
         // Edit mode
         await inventoryAPI.updateProduct(initialProduct.id, payload);
-        onSuccess('Product updated successfully in PostgreSQL database!');
+        onSuccess('Product updated successfully in the database!');
       } else {
         // Add mode
         await inventoryAPI.addProduct(payload);
-        onSuccess('Product added successfully in PostgreSQL database!');
+        onSuccess('Product added successfully to the database!');
       }
       onClose();
     } catch (err) {
       console.error('Save product error:', err);
-      setError(err.response?.data?.message || 'Failed to save product. Check backend connection.');
+      setError(err.response?.data?.message || 'Database error: Failed to save product.');
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +119,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
                 name="product_name"
                 type="text"
                 className="form-input"
-                placeholder="e.g. Wireless Ergonomic Mouse"
+                placeholder="e.g. Wireless Keyboard"
                 value={formData.product_name}
                 onChange={handleChange}
                 required
@@ -150,6 +154,19 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
                   required
                 />
               </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="supplier">Supplier (Optional)</label>
+              <input
+                id="supplier"
+                name="supplier"
+                type="text"
+                className="form-input"
+                placeholder="e.g. Acme Tech Distributors"
+                value={formData.supplier}
+                onChange={handleChange}
+              />
             </div>
 
             <div className="form-row">
@@ -209,7 +226,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess, initialPro
             </button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               <Check size={16} />
-              <span>{submitting ? 'Saving...' : initialProduct ? 'Update Product' : 'Add Product'}</span>
+              <span>{submitting ? 'Saving to Database...' : initialProduct ? 'Update Product' : 'Add Product'}</span>
             </button>
           </div>
         </form>
