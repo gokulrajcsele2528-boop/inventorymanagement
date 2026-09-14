@@ -1,13 +1,19 @@
 import os
 import socket
+from urllib.parse import urlparse
 from flask import Flask, jsonify
 from flask_cors import CORS
 from config import Config
 from models import db, Product, InventoryHistory
 from routes import api_bp
 
-def is_postgres_available(host='localhost', port=5432, timeout=1.0):
+def check_db_connection(uri, timeout=1.5):
     try:
+        if not uri or not uri.startswith('postgresql'):
+            return False
+        parsed = urlparse(uri)
+        host = parsed.hostname or 'localhost'
+        port = parsed.port or 5432
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((host, int(port)))
@@ -32,6 +38,7 @@ def create_app():
         return jsonify({
             'status': 'online',
             'system': 'Inventory Management System Backend API',
+            'database': app.config.get('SQLALCHEMY_DATABASE_URI', '').split('@')[-1] if '@' in app.config.get('SQLALCHEMY_DATABASE_URI', '') else 'Local DB',
             'endpoints': [
                 '/api/dashboard',
                 '/api/products',
@@ -41,17 +48,19 @@ def create_app():
             ]
         })
 
-    # Check if PostgreSQL is available
-    pg_host = app.config.get('DB_HOST', 'localhost')
-    pg_port = app.config.get('DB_PORT', 5432)
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     
-    if is_postgres_available(pg_host, pg_port):
-        print(f"[Database] PostgreSQL service detected on {pg_host}:{pg_port}. Connecting to PostgreSQL...")
+    # If PostgreSQL host is reachable, use it directly
+    if check_db_connection(db_uri):
+        print(f"[Database] PostgreSQL service connection verified. Using PostgreSQL.")
     else:
+        # If local/remote PG is unreachable, fallback to SQLite for zero downtime
         sqlite_path = os.path.join(os.path.dirname(__file__), 'inventory.db')
-        print(f"[Database Notice] PostgreSQL is not running on {pg_host}:{pg_port}.")
-        print(f"[Database Notice] Using local SQLite database at: {sqlite_path}")
-        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{sqlite_path}'
+        if not os.getenv('FORCE_POSTGRES'):
+            print(f"[Database Notice] PostgreSQL host was unreachable. Using local SQLite: sqlite:///{sqlite_path}")
+            app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{sqlite_path}'
+        else:
+            print(f"[Database Info] Forcing PostgreSQL connection to {db_uri}")
 
     db.init_app(app)
     with app.app_context():
@@ -59,9 +68,9 @@ def create_app():
             db.create_all()
             seed_initial_data()
         except Exception as e:
-            print(f"[Database Error during create_all]: {e}")
+            print(f"[Database Warning during initialization]: {e}")
             sqlite_path = os.path.join(os.path.dirname(__file__), 'inventory.db')
-            print(f"[Database Fallback] Switching to SQLite: sqlite:///{sqlite_path}")
+            print(f"[Database Fallback] Switching to SQLite database: sqlite:///{sqlite_path}")
             app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{sqlite_path}'
             db.init_app(app)
             db.create_all()
@@ -133,7 +142,7 @@ def seed_initial_data():
             db.session.add(history)
 
         db.session.commit()
-        print("[Database] Seeded initial demo products successfully.")
+        print("[Database] Initial products and audit history populated.")
 
 app = create_app()
 
