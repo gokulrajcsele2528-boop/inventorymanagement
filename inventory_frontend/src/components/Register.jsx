@@ -19,6 +19,12 @@ export default function Register({ onSwitchToLogin, notify }) {
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters long.');
       return;
@@ -31,14 +37,15 @@ export default function Register({ onSwitchToLogin, notify }) {
 
     try {
       setLoading(true);
-      const res = await authAPI.register(fullName.trim(), email.trim(), password);
-      if (res.success) {
-        notify('Account created successfully! Please sign in with your credentials.');
+      const res = await authAPI.register(fullName.trim(), cleanEmail, password);
+      if (res && res.success) {
+        notify('Account created successfully! Please sign in.');
         onSwitchToLogin();
       }
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.message || 'Registration failed. Please check your network and try again.');
+      const msg = err.response?.data?.message || err.message || 'Registration failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
