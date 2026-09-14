@@ -11,8 +11,62 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Attach JWT token to every outgoing request if available
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('inventory_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor to handle token expiry / 401s
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // If unauthorized, clear invalid session
+      if (localStorage.getItem('inventory_token')) {
+        localStorage.removeItem('inventory_token');
+        localStorage.removeItem('inventory_user');
+        window.location.reload();
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ==================== Authentication API ====================
+export const authAPI = {
+  register: async (fullName, email, password) => {
+    const res = await api.post('/auth/register', {
+      full_name: fullName,
+      email,
+      password,
+    });
+    return res.data;
+  },
+
+  login: async (email, password) => {
+    const res = await api.post('/auth/login', {
+      email,
+      password,
+    });
+    return res.data;
+  },
+
+  getMe: async () => {
+    const res = await api.get('/auth/me');
+    return res.data;
+  },
+};
+
+// ==================== Inventory API ====================
 export const inventoryAPI = {
-  // Dashboard real statistics
+  // Dashboard real statistics for authenticated user
   getDashboard: async () => {
     const res = await api.get('/dashboard');
     return res.data;

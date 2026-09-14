@@ -1,5 +1,4 @@
 import React from 'react';
-import { User, Bell } from 'lucide-react';
 
 const PAGE_TITLES = {
   dashboard: {
@@ -26,6 +25,8 @@ const PAGE_TITLES = {
 
 export default function Header({ activeTab, user }) {
   const currentInfo = PAGE_TITLES[activeTab] || { title: 'Inventory Management', subtitle: '' };
+  const displayName = user?.fullName || user?.full_name || user?.name || 'User';
+  const displayEmail = user?.email || '';
 
   return (
     <header className="top-header">
@@ -37,11 +38,11 @@ export default function Header({ activeTab, user }) {
       <div className="header-right">
         <div className="user-badge">
           <div className="user-avatar">
-            {user?.name ? user.name[0].toUpperCase() : 'A'}
+            {displayName ? displayName[0].toUpperCase() : 'U'}
           </div>
           <div className="user-info">
-            <span className="user-name">{user?.name || 'Administrator'}</span>
-            <span className="user-role">{user?.email || 'admin@inventory.com'}</span>
+            <span className="user-name">{displayName}</span>
+            <span className="user-role">{displayEmail}</span>
           </div>
         </div>
       </div>

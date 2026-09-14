@@ -1,7 +1,7 @@
 import os
 import sys
 from app import create_app
-from models import db, Product, InventoryHistory
+from models import db, User, Product, InventoryHistory
 
 def init_database():
     app = create_app()
@@ -13,11 +13,13 @@ def init_database():
         
         try:
             db.create_all()
-            print("[OK] Tables 'products' and 'inventory_history' verified/created.")
+            print("[OK] Tables 'users', 'products', and 'inventory_history' verified/created.")
             
+            user_count = User.query.count()
             product_count = Product.query.count()
             history_count = InventoryHistory.query.count()
             
+            print(f"[OK] Registered Users in Database: {user_count}")
             print(f"[OK] Current Products in Database: {product_count}")
             print(f"[OK] Current History Logs: {history_count}")
             print("[OK] Database is connected and fully operational!")

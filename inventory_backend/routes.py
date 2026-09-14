@@ -1,13 +1,99 @@
+import re
 from flask import Blueprint, request, jsonify
-from models import db, Product, InventoryHistory
+from models import db, User, Product, InventoryHistory
+from auth import generate_token, token_required
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
-# ==================== Dashboard ====================
-@api_bp.route('/dashboard', methods=['GET'])
-def get_dashboard():
+EMAIL_REGEX = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+
+# ==================== Authentication Routes ====================
+
+@api_bp.route('/auth/register', methods=['POST'])
+def register():
     try:
-        products = Product.query.all()
+        data = request.get_json() or {}
+        
+        full_name = (data.get('full_name') or data.get('fullName') or '').strip()
+        email = (data.get('email') or '').strip().lower()
+        password = data.get('password', '')
+        
+        if not full_name:
+            return jsonify({'success': False, 'message': 'Full Name is required.'}), 400
+            
+        if not email or not re.match(EMAIL_REGEX, email):
+            return jsonify({'success': False, 'message': 'Please provide a valid email address.'}), 400
+            
+        if not password or len(password) < 6:
+            return jsonify({'success': False, 'message': 'Password must be at least 6 characters long.'}), 400
+            
+        # Check if user already exists
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            return jsonify({'success': False, 'message': 'An account with this email already exists.'}), 400
+            
+        new_user = User(
+            full_name=full_name,
+            email=email
+        )
+        new_user.set_password(password)
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Account created successfully! Please sign in.',
+            'user': new_user.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Registration failed: {str(e)}'}), 500
+
+
+@api_bp.route('/auth/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json() or {}
+        email = (data.get('email') or '').strip().lower()
+        password = data.get('password', '')
+        
+        if not email or not password:
+            return jsonify({'success': False, 'message': 'Email and password are required.'}), 400
+            
+        user = User.query.filter_by(email=email).first()
+        
+        if not user or not user.check_password(password):
+            return jsonify({'success': False, 'message': 'Invalid email or password.'}), 401
+            
+        token = generate_token(user.id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful!',
+            'token': token,
+            'user': user.to_dict()
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Login error: {str(e)}'}), 500
+
+
+@api_bp.route('/auth/me', methods=['GET'])
+@token_required
+def get_current_user(current_user):
+    return jsonify({
+        'success': True,
+        'user': current_user.to_dict()
+    }), 200
+
+
+# ==================== Protected Dashboard ====================
+
+@api_bp.route('/dashboard', methods=['GET'])
+@token_required
+def get_dashboard(current_user):
+    try:
+        products = Product.query.filter_by(user_id=current_user.id).all()
         total_products = len(products)
         total_stock = sum(p.quantity for p in products)
         inventory_value = sum(p.quantity * p.price for p in products)
@@ -15,8 +101,9 @@ def get_dashboard():
         low_stock = sum(1 for p in products if 0 < p.quantity <= p.minimum_stock)
         out_of_stock = sum(1 for p in products if p.quantity <= 0)
         
-        # Get recent 6 history entries directly from database
-        recent_history = InventoryHistory.query.order_by(InventoryHistory.created_at.desc()).limit(6).all()
+        # Get recent 6 history entries for this user
+        recent_history = InventoryHistory.query.filter_by(user_id=current_user.id)\
+            .order_by(InventoryHistory.created_at.desc()).limit(6).all()
         
         return jsonify({
             'success': True,
@@ -33,14 +120,16 @@ def get_dashboard():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
-# ==================== Products ====================
+# ==================== Protected Products ====================
+
 @api_bp.route('/products', methods=['GET'])
-def get_products():
+@token_required
+def get_products(current_user):
     try:
         search_query = request.args.get('search', '').strip().lower()
         category_filter = request.args.get('category', '').strip().lower()
         
-        query = Product.query
+        query = Product.query.filter_by(user_id=current_user.id)
         
         if search_query:
             query = query.filter(
@@ -64,9 +153,10 @@ def get_products():
 
 
 @api_bp.route('/products/<int:id>', methods=['GET'])
-def get_product(id):
+@token_required
+def get_product(current_user, id):
     try:
-        product = Product.query.get(id)
+        product = Product.query.filter_by(id=id, user_id=current_user.id).first()
         if not product:
             return jsonify({'success': False, 'message': 'Product not found.'}), 404
             
@@ -79,7 +169,8 @@ def get_product(id):
 
 
 @api_bp.route('/products', methods=['POST'])
-def add_product():
+@token_required
+def add_product(current_user):
     try:
         data = request.get_json() or {}
         
@@ -94,12 +185,13 @@ def add_product():
         if not product_name or not product_id or not category:
             return jsonify({'success': False, 'message': 'Product Name, Product ID, and Category are required.'}), 400
         
-        # Check uniqueness of product_id in database
-        existing = Product.query.filter_by(product_id=product_id).first()
+        # Check uniqueness of product_id for this user
+        existing = Product.query.filter_by(user_id=current_user.id, product_id=product_id).first()
         if existing:
-            return jsonify({'success': False, 'message': f'Product ID "{product_id}" already exists.'}), 400
+            return jsonify({'success': False, 'message': f'Product ID "{product_id}" already exists in your inventory.'}), 400
         
         new_product = Product(
+            user_id=current_user.id,
             product_name=product_name,
             product_id=product_id,
             category=category,
@@ -110,8 +202,9 @@ def add_product():
         )
         db.session.add(new_product)
         
-        # Add audit history log into database
+        # Add audit history log associated with user
         history_entry = InventoryHistory(
+            user_id=current_user.id,
             product_id=product_id,
             action='Product Added',
             quantity=int(quantity)
@@ -131,18 +224,18 @@ def add_product():
 
 
 @api_bp.route('/products/<int:id>', methods=['PUT'])
-def update_product(id):
+@token_required
+def update_product(current_user, id):
     try:
-        product = Product.query.get(id)
+        product = Product.query.filter_by(id=id, user_id=current_user.id).first()
         if not product:
-            return jsonify({'success': False, 'message': 'Product not found in database.'}), 404
+            return jsonify({'success': False, 'message': 'Product not found in your inventory.'}), 404
             
         data = request.get_json() or {}
         
-        # Check if product_id is changing and already taken
         new_product_id = (data.get('product_id') or data.get('sku') or product.product_id).strip()
         if new_product_id != product.product_id:
-            existing = Product.query.filter_by(product_id=new_product_id).first()
+            existing = Product.query.filter_by(user_id=current_user.id, product_id=new_product_id).first()
             if existing:
                 return jsonify({'success': False, 'message': f'Product ID "{new_product_id}" is already used by another item.'}), 400
         
@@ -156,8 +249,8 @@ def update_product(id):
         product.quantity = new_quantity
         product.minimum_stock = int(data.get('minimum_stock', data.get('minimumStock', product.minimum_stock)))
         
-        # History record for update in database
         history_entry = InventoryHistory(
+            user_id=current_user.id,
             product_id=product.product_id,
             action='Product Updated',
             quantity=new_quantity
@@ -177,19 +270,20 @@ def update_product(id):
 
 
 @api_bp.route('/products/<int:id>', methods=['DELETE'])
-def delete_product(id):
+@token_required
+def delete_product(current_user, id):
     try:
-        product = Product.query.get(id)
+        product = Product.query.filter_by(id=id, user_id=current_user.id).first()
         if not product:
-            return jsonify({'success': False, 'message': 'Product not found in database.'}), 404
+            return jsonify({'success': False, 'message': 'Product not found in your inventory.'}), 404
             
         prod_id = product.product_id
         prod_qty = product.quantity
         
         db.session.delete(product)
         
-        # History log for deletion in database
         history_entry = InventoryHistory(
+            user_id=current_user.id,
             product_id=prod_id,
             action='Product Deleted',
             quantity=prod_qty
@@ -207,9 +301,11 @@ def delete_product(id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
-# ==================== Stock Management ====================
+# ==================== Protected Stock Management ====================
+
 @api_bp.route('/stock/add', methods=['POST'])
-def add_stock():
+@token_required
+def add_stock(current_user):
     try:
         data = request.get_json() or {}
         product_id = (data.get('product_id') or data.get('sku') or '').strip()
@@ -218,13 +314,14 @@ def add_stock():
         if not product_id or quantity_to_add <= 0:
             return jsonify({'success': False, 'message': 'Valid Product ID and positive quantity required.'}), 400
             
-        product = Product.query.filter_by(product_id=product_id).first()
+        product = Product.query.filter_by(user_id=current_user.id, product_id=product_id).first()
         if not product:
-            return jsonify({'success': False, 'message': f'Product with ID "{product_id}" not found in database.'}), 404
+            return jsonify({'success': False, 'message': f'Product with ID "{product_id}" not found in your inventory.'}), 404
             
         product.quantity += quantity_to_add
         
         history_entry = InventoryHistory(
+            user_id=current_user.id,
             product_id=product_id,
             action='Stock Added',
             quantity=quantity_to_add
@@ -243,7 +340,8 @@ def add_stock():
 
 
 @api_bp.route('/stock/remove', methods=['POST'])
-def remove_stock():
+@token_required
+def remove_stock(current_user):
     try:
         data = request.get_json() or {}
         product_id = (data.get('product_id') or data.get('sku') or '').strip()
@@ -252,19 +350,20 @@ def remove_stock():
         if not product_id or quantity_to_remove <= 0:
             return jsonify({'success': False, 'message': 'Valid Product ID and positive quantity required.'}), 400
             
-        product = Product.query.filter_by(product_id=product_id).first()
+        product = Product.query.filter_by(user_id=current_user.id, product_id=product_id).first()
         if not product:
-            return jsonify({'success': False, 'message': f'Product with ID "{product_id}" not found in database.'}), 404
+            return jsonify({'success': False, 'message': f'Product with ID "{product_id}" not found in your inventory.'}), 404
             
         if product.quantity < quantity_to_remove:
             return jsonify({
                 'success': False, 
-                'message': f'Insufficient stock. Available in database: {product.quantity}, Requested: {quantity_to_remove}.'
+                'message': f'Insufficient stock. Available: {product.quantity}, Requested: {quantity_to_remove}.'
             }), 400
             
         product.quantity -= quantity_to_remove
         
         history_entry = InventoryHistory(
+            user_id=current_user.id,
             product_id=product_id,
             action='Stock Removed',
             quantity=quantity_to_remove
@@ -282,11 +381,14 @@ def remove_stock():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
-# ==================== Inventory History ====================
+# ==================== Protected History ====================
+
 @api_bp.route('/history', methods=['GET'])
-def get_history():
+@token_required
+def get_history(current_user):
     try:
-        history = InventoryHistory.query.order_by(InventoryHistory.created_at.desc()).all()
+        history = InventoryHistory.query.filter_by(user_id=current_user.id)\
+            .order_by(InventoryHistory.created_at.desc()).all()
         return jsonify({
             'success': True,
             'data': [h.to_dict() for h in history]

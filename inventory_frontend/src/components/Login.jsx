@@ -1,30 +1,34 @@
 import React, { useState } from 'react';
 import { Boxes, Lock, Mail, ArrowRight } from 'lucide-react';
+import { authAPI } from '../api';
 
-export default function Login({ onLoginSuccess }) {
-  const [email, setEmail] = useState('admin@inventory.com');
-  const [password, setPassword] = useState('admin123');
+export default function Login({ onLoginSuccess, onSwitchToRegister }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!email.trim() || !password.trim()) {
+    if (!email.trim() || !password) {
       setError('Please provide both email and password.');
       return;
     }
 
-    setLoading(true);
-    setTimeout(() => {
+    try {
+      setLoading(true);
+      const res = await authAPI.login(email.trim(), password);
+      if (res.success) {
+        onLoginSuccess(res.user, res.token);
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err.response?.data?.message || 'Invalid email or password.');
+    } finally {
       setLoading(false);
-      // Simple functional authentication
-      onLoginSuccess({
-        email: email.trim(),
-        name: email.split('@')[0].toUpperCase(),
-      });
-    }, 400);
+    }
   };
 
   return (
@@ -102,12 +106,22 @@ export default function Login({ onLoginSuccess }) {
           </button>
         </form>
 
-        <div className="demo-credentials-box">
-          <strong>Default Demo Credentials:</strong>
-          <div style={{ marginTop: '0.25rem' }}>
-            Email: <code>admin@inventory.com</code><br/>
-            Password: <code>admin123</code>
-          </div>
+        <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+          Don't have an account?{' '}
+          <button
+            type="button"
+            onClick={onSwitchToRegister}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--primary)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textDecoration: 'underline'
+            }}
+          >
+            Create Account
+          </button>
         </div>
       </div>
     </div>

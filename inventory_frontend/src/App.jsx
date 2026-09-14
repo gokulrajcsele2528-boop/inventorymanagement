@@ -7,17 +7,20 @@ import StockManagement from './components/StockManagement';
 import History from './components/History';
 import Settings from './components/Settings';
 import Login from './components/Login';
+import Register from './components/Register';
 import AddProductModal from './components/AddProductModal';
 import StockModal from './components/StockModal';
 import { inventoryAPI } from './api';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function App() {
+  const [token, setToken] = useState(() => localStorage.getItem('inventory_token') || '');
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('inventory_user');
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [authView, setAuthView] = useState('login'); // 'login' or 'register'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [productsList, setProductsList] = useState([]);
   
@@ -38,6 +41,7 @@ export default function App() {
   };
 
   const loadAllProducts = async () => {
+    if (!token) return;
     try {
       const res = await inventoryAPI.getProducts();
       if (res.success) {
@@ -49,21 +53,27 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (user) {
+    if (token && user) {
       loadAllProducts();
     }
-  }, [user]);
+  }, [token, user]);
 
-  const handleLogin = (userData) => {
+  const handleLoginSuccess = (userData, jwtToken) => {
     setUser(userData);
+    setToken(jwtToken);
+    localStorage.setItem('inventory_token', jwtToken);
     localStorage.setItem('inventory_user', JSON.stringify(userData));
-    showToast(`Welcome back, ${userData.name}!`);
+    showToast(`Welcome, ${userData.fullName || userData.full_name || userData.name}!`);
   };
 
   const handleLogout = () => {
     setUser(null);
+    setToken('');
+    localStorage.removeItem('inventory_token');
     localStorage.removeItem('inventory_user');
     setActiveTab('dashboard');
+    setAuthView('login');
+    showToast('Logged out successfully.');
   };
 
   const handleOpenAdd = () => {
@@ -91,8 +101,29 @@ export default function App() {
     loadAllProducts();
   };
 
-  if (!user) {
-    return <Login onLoginSuccess={handleLogin} />;
+  // If not logged in, show Login or Register page
+  if (!token || !user) {
+    return (
+      <>
+        {authView === 'login' ? (
+          <Login
+            onLoginSuccess={handleLoginSuccess}
+            onSwitchToRegister={() => setAuthView('register')}
+          />
+        ) : (
+          <Register
+            onSwitchToLogin={() => setAuthView('login')}
+            notify={showToast}
+          />
+        )}
+        {toast && (
+          <div className={`toast ${toast.type === 'error' ? 'toast-error' : 'toast-success'}`}>
+            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            <span>{toast.message}</span>
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
